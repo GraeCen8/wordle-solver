@@ -1,13 +1,15 @@
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead};
 use std::path::Path;
+
+use rayon::prelude::*;
 
 fn read_lines(path: &str) -> io::Result<Vec<String>> {
     let file = File::open(Path::new(path))?;
     let reader = io::BufReader::new(file);
     Ok(reader.lines().collect::<Result<Vec<_>, _>>()?)
 }
+
 #[allow(dead_code)]
 struct Words {
     target_cnt: usize,
@@ -20,8 +22,8 @@ struct Words {
 
 impl Words {
     pub fn new() -> Self {
-        let target_path: String = "../../wordle_targets.txt".into();
-        let possible_path: String = "../../wordle_possibles.txt".into();
+        let target_path: String = "wordle_targets.txt".into();
+        let possible_path: String = "wordle_possibles.txt".into();
 
         let target_words: Vec<String> = read_lines(&target_path)
             .unwrap_or_default()
@@ -89,21 +91,17 @@ impl WordleSolver {
                     guessed_word
                         .iter()
                         .enumerate()
-                        .all(|(i, (guessed_char, color))| {
-                            match color {
-                                // Grey: char must not appear anywhere in the candidate.
-                                // Note: this assumes no duplicate letters in a single guess.
-                                // For full duplicate handling this would need extra logic.
-                                Color::Grey => !candidate.contains(*guessed_char),
+                        .all(|(i, (guessed_char, color))| match color {
+                            // Grey: char must not appear anywhere in the candidate.
+                            Color::Grey => !candidate.contains(*guessed_char),
 
-                                // Green: candidate must have this exact char at this exact position
-                                Color::Green => candidate.chars().nth(i) == Some(*guessed_char),
+                            // Green: candidate must have this exact char at this exact position
+                            Color::Green => candidate.chars().nth(i) == Some(*guessed_char),
 
-                                // Yellow: char exists in candidate but NOT at this position
-                                Color::Yellow => {
-                                    candidate.contains(*guessed_char)
-                                        && candidate.chars().nth(i) != Some(*guessed_char)
-                                }
+                            // Yellow: char exists in candidate but NOT at this position
+                            Color::Yellow => {
+                                candidate.contains(*guessed_char)
+                                    && candidate.chars().nth(i) != Some(*guessed_char)
                             }
                         })
                 })
@@ -127,27 +125,28 @@ impl WordleSolver {
         }
     }
 
-    /// Expected information gain (bits) from guessing `word`.
-    /// Partitions the remaining possible words by the colour pattern
-    /// they would produce, then computes Shannon entropy:
-    ///   H = -sum( p(bucket) * log2(p(bucket)) )
-    pub fn get_expected_bits(&self, word: &str) -> f32 {
-        let remaining = self.possible_words();
+    /// Expected information gain (bits) from guessing `word` given a
+    /// pre-computed list of remaining possible words.
+    /// Uses a fixed [u32; 243] array (3^5 patterns) instead of a HashMap
+    /// to avoid heap allocation in the hot path.
+    fn get_expected_bits_with(&self, word: &str, remaining: &[String]) -> f32 {
         if remaining.is_empty() {
             return 0.0;
         }
 
-        // Count how many remaining words fall into each colour-pattern bucket.
-        let mut bucket_counts: HashMap<[u8; 5], usize> = HashMap::new();
+        // 3^5 = 243 possible colour patterns, indexed in base-3
+        let mut buckets = [0u32; 243];
 
-        for target in &remaining {
+        for target in remaining {
             let pattern = Self::score(word, target);
-            *bucket_counts.entry(pattern).or_insert(0) += 1;
+            let idx = pattern.iter().fold(0usize, |acc, &p| acc * 3 + p as usize);
+            buckets[idx] += 1;
         }
 
         let total = remaining.len() as f32;
-        bucket_counts
-            .values()
+        buckets
+            .iter()
+            .filter(|&&c| c > 0)
             .map(|&count| {
                 let p = count as f32 / total;
                 -p * p.log2()
@@ -155,14 +154,24 @@ impl WordleSolver {
             .sum()
     }
 
-    /// Returns the best next guess (highest expected bits) from all possible words.
+    /// Public wrapper — computes remaining words then delegates.
+    pub fn get_expected_bits(&self, word: &str) -> f32 {
+        let remaining = self.possible_words();
+        self.get_expected_bits_with(word, &remaining)
+    }
+
+    /// Returns the best next guess (highest expected bits) from all target words.
+    /// Computes `possible_words()` once and shares it across all candidates,
+    /// then uses Rayon to evaluate candidates in parallel.
     pub fn best_guess(&self) -> Option<String> {
-        let candidates = &self.all_words.possible_words;
+        let remaining = self.possible_words(); // computed once, shared across all candidates
+        let candidates = &self.all_words.target_words;
+
         candidates
-            .iter()
+            .par_iter() // parallel iterator via Rayon
             .max_by(|a, b| {
-                self.get_expected_bits(a)
-                    .partial_cmp(&self.get_expected_bits(b))
+                self.get_expected_bits_with(a, &remaining)
+                    .partial_cmp(&self.get_expected_bits_with(b, &remaining))
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
             .cloned()
@@ -176,7 +185,7 @@ impl WordleSolver {
         let mut pattern = [0u8; 5];
         let mut target_used = [false; 5];
 
-        // First pass: find greens
+        // First pass: greens
         for i in 0..5 {
             if guess[i] == target[i] {
                 pattern[i] = 2;
@@ -184,7 +193,7 @@ impl WordleSolver {
             }
         }
 
-        // Second pass: find yellows
+        // Second pass: yellows
         for i in 0..5 {
             if pattern[i] == 2 {
                 continue;
@@ -213,7 +222,6 @@ pub fn example() {
         println!("Expected bits: {:.4}", solver.get_expected_bits(&guess));
     }
 
-    // Example: add a guess — "crane" with pattern Grey/Green/Yellow/Grey/Grey
     solver.add_guess([
         ('c', Color::Grey),
         ('r', Color::Green),
@@ -232,3 +240,4 @@ pub fn example() {
         println!("\nBest next guess: {}", next);
     }
 }
+
