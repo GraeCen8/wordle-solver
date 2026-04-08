@@ -6,9 +6,11 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::solving::solver::Word;
     use crate::solving::solver::WordleSolver;
+    use crate::solving::solver::Words;
+
+    use rayon::prelude::*;
 
     //solves a worlde for a given target word returning the num or guesses or None if failed in 6
     //guesses
@@ -34,10 +36,27 @@ mod tests {
                 (chars[4], pattern[4].into()),
             ];
             solver.add_guess(word);
-
-            let remaining = solver.possible_words();
         }
-        println!("Failed to solve '{}'");
+        println!("Failed to solve '{}'", target);
         None
+    }
+
+    #[test]
+    fn solve_all_words() {
+        let all_words = Words::new().target_words;
+
+        let answers: Vec<Option<usize>> = all_words
+            .par_iter()
+            .map(|test_word| solve(test_word))
+            .collect();
+
+        let succeded_words: Vec<usize> = answers.clone().into_iter().flatten().collect();
+        let none_cnt = answers.clone().iter().filter(|a| a.is_none()).count() as i32;
+        let avg_moves: f32 =
+            succeded_words.iter().sum::<usize>() as f32 / succeded_words.len() as f32;
+
+        println!("the avg moves of all words is: {}", avg_moves);
+        print!("the amount of words that failed is {}", none_cnt);
+        assert_eq!(none_cnt, 0 as i32)
     }
 }

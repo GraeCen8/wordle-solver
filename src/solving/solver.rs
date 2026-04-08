@@ -11,10 +11,10 @@ fn read_lines(path: &str) -> io::Result<Vec<String>> {
 }
 
 #[allow(dead_code)]
-struct Words {
+pub struct Words {
     target_cnt: usize,
     target_path: String,
-    target_words: Vec<String>,
+    pub target_words: Vec<String>,
     possible_cnt: usize,
     possible_path: String,
     possible_words: Vec<String>,
