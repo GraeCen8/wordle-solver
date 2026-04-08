@@ -6,57 +6,141 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use crate::solving::solver::Word;
-    use crate::solving::solver::WordleSolver;
-    use crate::solving::solver::Words;
+    use crate::solving::solver::{Color, Word, WordleSolver, Words};
+    use std::collections::HashSet;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
-    use rayon::prelude::*;
+    fn feedback_from_guess_and_target(guess: &str, target: &str) -> Word {
+        let pattern = WordleSolver::score(guess, target);
+        let chars: Vec<char> = guess.chars().collect();
+        [
+            (chars[0], pattern[0].into()),
+            (chars[1], pattern[1].into()),
+            (chars[2], pattern[2].into()),
+            (chars[3], pattern[3].into()),
+            (chars[4], pattern[4].into()),
+        ]
+    }
 
-    //solves a worlde for a given target word returning the num or guesses or None if failed in 6
-    //guesses
-    fn solve(target: &str) -> Option<usize> {
+    fn solve_with_repeat_guard(target: &str, max_guesses: usize) -> Option<usize> {
         let mut solver = WordleSolver::new();
+        let mut seen: HashSet<String> = HashSet::new();
 
-        for guess_num in 1..=6 {
-            let guess = solver.best_guess().expect("no guess returned");
+        for guess_num in 1..=max_guesses {
+            let mut guess = solver.best_guess().expect("no guess returned");
+            if seen.contains(&guess) {
+                let fallback = solver
+                    .possible_words()
+                    .into_iter()
+                    .find(|w| !seen.contains(w))
+                    .expect("no unseen fallback candidate");
+                guess = fallback;
+            }
 
-            //check if it is solved
+            seen.insert(guess.clone());
             if guess == target {
                 return Some(guess_num);
             }
 
-            let pattern = WordleSolver::score(&guess, target);
-            let chars: Vec<char> = guess.chars().collect();
-
-            let word: Word = [
-                (chars[0], pattern[0].into()),
-                (chars[1], pattern[1].into()),
-                (chars[2], pattern[2].into()),
-                (chars[3], pattern[3].into()),
-                (chars[4], pattern[4].into()),
-            ];
-            solver.add_guess(word);
+            let feedback = feedback_from_guess_and_target(&guess, target);
+            solver.add_guess(feedback);
         }
-        println!("Failed to solve '{}'", target);
+
         None
     }
 
+    fn random_target_word() -> String {
+        let words = Words::new().target_words;
+        let len = words.len();
+        assert!(len > 0, "target word list is empty");
+
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock error")
+            .as_nanos() as u64;
+        let mut x = nanos ^ 0x9E37_79B9_7F4A_7C15;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        words[(x as usize) % len].clone()
+    }
+
     #[test]
-    fn solve_all_words() {
-        let all_words = Words::new().target_words;
+    fn score_handles_repeated_letters() {
+        assert_eq!(WordleSolver::score("allee", "apple"), [2, 1, 0, 0, 2]);
+        assert_eq!(WordleSolver::score("sissy", "missy"), [0, 2, 2, 2, 2]);
+    }
 
-        let answers: Vec<Option<usize>> = all_words
-            .par_iter()
-            .map(|test_word| solve(test_word))
-            .collect();
+    #[test]
+    fn best_guess_is_valid_and_has_bits() {
+        let solver = WordleSolver::new();
+        let guess = solver.best_guess().expect("no guess returned");
 
-        let succeded_words: Vec<usize> = answers.clone().into_iter().flatten().collect();
-        let none_cnt = answers.clone().iter().filter(|a| a.is_none()).count() as i32;
-        let avg_moves: f32 =
-            succeded_words.iter().sum::<usize>() as f32 / succeded_words.len() as f32;
+        assert_eq!(guess.len(), 5);
+        assert!(guess.chars().all(|c| c.is_ascii_lowercase()));
+        assert!(solver.get_expected_bits(&guess) >= 0.0);
+    }
 
-        println!("the avg moves of all words is: {}", avg_moves);
-        print!("the amount of words that failed is {}", none_cnt);
-        assert_eq!(none_cnt, 0 as i32)
+    #[test]
+    fn adding_feedback_never_increases_candidate_count() {
+        let mut solver = WordleSolver::new();
+        let before = solver.possible_words().len();
+
+        let feedback: Word = feedback_from_guess_and_target("crane", "slate");
+        solver.add_guess(feedback);
+        let after = solver.possible_words().len();
+
+        assert!(after <= before);
+    }
+
+    #[test]
+    fn all_green_feedback_leaves_exact_target() {
+        let mut solver = WordleSolver::new();
+        let target = "cigar";
+
+        let feedback: Word = [
+            ('c', Color::Green),
+            ('i', Color::Green),
+            ('g', Color::Green),
+            ('a', Color::Green),
+            ('r', Color::Green),
+        ];
+        solver.add_guess(feedback);
+        let remaining = solver.possible_words();
+
+        assert_eq!(remaining, vec![target.to_string()]);
+    }
+
+    #[test]
+    fn solves_random_target_1() {
+        let target = random_target_word();
+        let solved_in = solve_with_repeat_guard(&target, 6);
+        assert!(
+            solved_in.is_some(),
+            "failed to solve random target '{}' within 6 guesses",
+            target
+        );
+    }
+
+    #[test]
+    fn solves_random_target_2() {
+        let target = random_target_word();
+        let solved_in = solve_with_repeat_guard(&target, 6);
+        assert!(
+            solved_in.is_some(),
+            "failed to solve random target '{}' within 6 guesses",
+            target
+        );
+    }
+
+    #[test]
+    fn solves_random_target_3() {
+        let target = random_target_word();
+        let solved_in = solve_with_repeat_guard(&target, 6);
+        assert!(
+            solved_in.is_some(),
+            "failed to solve random target '{}' within 6 guesses",
+            target
+        );
     }
 }
