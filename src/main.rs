@@ -1,5 +1,5 @@
 mod solving;
 
 fn main() {
-    todo!()
+    solving::solver::example()
 }

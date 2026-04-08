@@ -8,7 +8,7 @@ fn read_lines(path: &str) -> io::Result<Vec<String>> {
     let reader = io::BufReader::new(file);
     Ok(reader.lines().collect::<Result<Vec<_>, _>>()?)
 }
-
+#[allow(dead_code)]
 struct Words {
     target_cnt: usize,
     target_path: String,
@@ -202,7 +202,8 @@ impl WordleSolver {
     }
 }
 
-fn example() {
+#[allow(dead_code)]
+pub fn example() {
     let mut solver = WordleSolver::new();
 
     println!("Remaining words: {}", solver.possible_words().len());
@@ -231,4 +232,3 @@ fn example() {
         println!("\nBest next guess: {}", next);
     }
 }
-

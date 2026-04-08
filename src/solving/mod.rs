@@ -1,1 +1,1 @@
-mod calc_info;
+pub mod solver;
