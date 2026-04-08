@@ -1,0 +1,22 @@
+[package]
+name = "world-solver"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+actix-web = "4.13.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+tokio = { version = "1.51.0", features = ["full"] }
+sqlx = { version = "0.8", features = [
+  "sqlite",
+  "runtime-tokio-rustls",
+  "macros",
+  "uuid",
+  "chrono",
+] }
+dotenvy = "0.15"
+anyhow = "1.0.102"
+thiserror = "2.0.18"
+async-trait = "0.1.89"
+time = "0.3.47"
