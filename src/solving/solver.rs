@@ -59,6 +59,16 @@ pub enum Color {
     Green,
 }
 
+impl From<u8> for Color {
+    fn from(val: u8) -> Self {
+        match val {
+            2 => Color::Green,
+            1 => Color::Yellow,
+            _ => Color::Grey,
+        }
+    }
+}
+
 // [(char, Color); 5] — one entry per letter position
 pub type Word = [(char, Color); 5];
 
@@ -113,6 +123,7 @@ impl WordleSolver {
     /// Probability that `word` is the answer given current knowledge.
     /// Returns 1/N where N is the number of remaining possible words,
     /// or 0.0 if the word has already been ruled out.
+    #[allow(dead_code)]
     pub fn probability(&self, word: &str) -> f32 {
         let words = self.possible_words();
         if words.is_empty() {
@@ -179,7 +190,7 @@ impl WordleSolver {
 
     /// Scores a guess against a target, returning a 5-byte pattern:
     ///   2 = Green, 1 = Yellow, 0 = Grey
-    fn score(guess: &str, target: &str) -> [u8; 5] {
+    pub fn score(guess: &str, target: &str) -> [u8; 5] {
         let guess: Vec<char> = guess.chars().collect();
         let target: Vec<char> = target.chars().collect();
         let mut pattern = [0u8; 5];
